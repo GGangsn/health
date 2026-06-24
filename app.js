@@ -443,13 +443,19 @@ function normalizeStoredLoads(nextState) {
   const exerciseWeights = { ...nextState.exerciseWeights };
   const pendingIncrements = { ...nextState.pendingIncrements };
   for (const exercise of ROUTINE.flatMap((day) => day.exercises)) {
-    if (!BARBELL_EXERCISE_IDS.has(exercise.id)) continue;
     if (exerciseWeights[exercise.id] != null) {
       exerciseWeights[exercise.id] = roundTo(exerciseWeights[exercise.id], exercise.loadStep);
     }
     if (pendingIncrements[exercise.id] != null) {
-      pendingIncrements[exercise.id] = roundTo(pendingIncrements[exercise.id], exercise.loadStep);
+      pendingIncrements[exercise.id] = normalizePendingIncrement(exercise.id, pendingIncrements[exercise.id]);
     }
+    const variantKey = getVariantKey(exercise.id);
+    if (pendingIncrements[variantKey] != null) {
+      pendingIncrements[variantKey] = normalizePendingIncrement(variantKey, pendingIncrements[variantKey]);
+    }
+  }
+  for (const key of Object.keys(pendingIncrements)) {
+    pendingIncrements[key] = normalizePendingIncrement(key, pendingIncrements[key]);
   }
   return {
     ...nextState,
@@ -469,6 +475,29 @@ function kg(value) {
 
 function roundTo(value, step = 0.5) {
   return Math.round((Number(value) || 0) / step) * step;
+}
+
+function getLoadMetaForKey(key, fallbackExercise = null) {
+  const variantMeta = VARIANT_META[key];
+  if (variantMeta) return variantMeta;
+  if (fallbackExercise) {
+    return {
+      loadMode: fallbackExercise.loadMode || "load",
+      loadStep: fallbackExercise.loadStep || 2.5
+    };
+  }
+  const baseExercise = ROUTINE.flatMap((day) => day.exercises).find((exercise) => exercise.id === key);
+  return {
+    loadMode: baseExercise?.loadMode || "load",
+    loadStep: baseExercise?.loadStep || 2.5
+  };
+}
+
+function normalizePendingIncrement(key, value, fallbackExercise = null) {
+  const meta = getLoadMetaForKey(key, fallbackExercise);
+  const step = meta.loadStep || fallbackExercise?.loadStep || 2.5;
+  const amount = Math.abs(roundTo(Number(value) || 0, step));
+  return meta.loadMode === "assistance" ? -amount : amount;
 }
 
 function epleyOneRm(weight, reps) {
@@ -762,7 +791,11 @@ function completeSession() {
       const step = exercise?.loadStep || 2.5;
       const direction = exercise?.loadMode === "assistance" ? -step : step;
       const pendingKey = exercise?.variantKey || entry.variantKey || entry.exerciseId;
-      nextPending[pendingKey] = roundTo((Number(nextPending[pendingKey]) || 0) + direction, step);
+      nextPending[pendingKey] = normalizePendingIncrement(
+        pendingKey,
+        (Number(nextPending[pendingKey]) || 0) + direction,
+        exercise
+      );
       nextStreaks[entry.exerciseId] = 0;
       applied.push(entry.exerciseId);
     } else {
@@ -837,16 +870,17 @@ function advanceAfterSession(dayId, week, cycle, exerciseWeights, pendingIncreme
 
   const appliedWeights = { ...exerciseWeights };
   const appliedVariantWeights = exerciseVariantWeights ? { ...exerciseVariantWeights } : null;
-  for (const [pendingKey, increment] of Object.entries(pendingIncrements)) {
+  for (const [pendingKey, rawIncrement] of Object.entries(pendingIncrements)) {
     const exercise = getExercise(pendingKey) || getExerciseByVariantKey(pendingKey);
+    const increment = normalizePendingIncrement(pendingKey, rawIncrement, exercise);
     const exerciseId = exercise?.id || pendingKey;
     const previousWeight = Number(appliedWeights[exerciseId]) || 0;
-    const nextWeight = Math.max(0, previousWeight + Number(increment));
+    const nextWeight = Math.max(0, previousWeight + increment);
     appliedWeights[exerciseId] = roundTo(nextWeight, exercise?.loadStep || 2.5);
     if (appliedVariantWeights) {
       const variantKey = pendingKey.includes(":") ? pendingKey : getSelectedExerciseVariant(exerciseId);
       appliedVariantWeights[variantKey] = roundTo(
-        Math.max(0, (Number(appliedVariantWeights[variantKey] ?? previousWeight) || 0) + Number(increment)),
+        Math.max(0, (Number(appliedVariantWeights[variantKey] ?? previousWeight) || 0) + increment),
         exercise?.loadStep || 2.5
       );
     }
@@ -916,7 +950,11 @@ function updateExercise(exerciseId, key, value) {
       nextValue
     );
     if (state.pendingIncrements[variantKey] != null) {
-      state.pendingIncrements[variantKey] = roundTo(state.pendingIncrements[variantKey], nextValue);
+      state.pendingIncrements[variantKey] = normalizePendingIncrement(
+        variantKey,
+        state.pendingIncrements[variantKey],
+        current
+      );
     }
   }
   saveState();
