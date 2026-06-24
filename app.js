@@ -511,6 +511,10 @@ function targetWeightFromOneRm(oneRm, rpe, step = 2.5) {
   return roundTo((Number(oneRm) || 0) * (RPE_PERCENT[rpe] || RPE_PERCENT[8]), step);
 }
 
+function targetWeightFromBaseLoad(baseLoad, week = state.week, step = 2.5) {
+  return roundTo((Number(baseLoad) || 0) * getPhase(week).loadScale, step);
+}
+
 function formatLoad(value, exercise = null) {
   if (exercise?.loadMode === "assistance") return `보조 ${kg(value)}`;
   return kg(value);
@@ -533,7 +537,7 @@ function getPhase(week = state.week) {
       detail: "RPE 8",
       rpe: 8,
       volumeScale: 1,
-      loadScale: 0.8,
+      loadScale: 1,
       setTarget: 3
     };
   }
@@ -543,16 +547,16 @@ function getPhase(week = state.week) {
       detail: "RPE 9",
       rpe: 9,
       volumeScale: 1,
-      loadScale: 0.85,
+      loadScale: 1.05,
       setTarget: 4
     };
   }
   return {
     name: "디로드",
-    detail: "볼륨/중량 -40%",
+    detail: "기준 중량 -25%",
     rpe: 7,
     volumeScale: 0.6,
-    loadScale: 0.6,
+    loadScale: 0.75,
     setTarget: 1
   };
 }
@@ -703,11 +707,10 @@ function getRoutine() {
 }
 
 function getDraft(exercise) {
-  const phase = getPhase();
   const targetSets = getTargetSets(state.week, exercise);
   const defaultWeight = Number(state.exerciseWeights[exercise.id] ?? exercise.baseWeight) || 0;
   const baseWeight = getVariantWeight(exercise.id, exercise.variantKey || getSelectedExerciseVariant(exercise.id), defaultWeight);
-  const targetWeight = roundTo(baseWeight * phase.loadScale, exercise.loadStep);
+  const targetWeight = targetWeightFromBaseLoad(baseWeight, state.week, exercise.loadStep);
   const saved = state.draft[exercise.id] || {};
   return {
     weight: saved.weight ?? targetWeight,
@@ -1695,6 +1698,7 @@ export {
   getVariantKey,
   isOverloadStackWeek,
   shouldPersistBaseLoad,
+  targetWeightFromBaseLoad,
   targetWeightFromOneRm,
   advanceAfterSession
 };
