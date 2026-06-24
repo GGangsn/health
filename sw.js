@@ -1,4 +1,4 @@
-const CACHE_NAME = "rpe-bulk-pwa-v11";
+const CACHE_NAME = "rpe-bulk-pwa-v12";
 const ASSETS = [
   "./",
   "./index.html",

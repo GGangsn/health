@@ -578,6 +578,10 @@ function isOverloadStackWeek(week = state.week) {
   return week === 3 || week === 4;
 }
 
+function shouldPersistBaseLoad(week = state.week) {
+  return week < 5;
+}
+
 function getTargetRpe(week = state.week) {
   return getPhase(week).rpe;
 }
@@ -764,6 +768,20 @@ function calcExerciseEntry(exercise) {
   };
 }
 
+function getPreDeloadVariantWeights(currentVariantWeights, cycle = state.cycle, logs = state.logs) {
+  const restored = { ...currentVariantWeights };
+  const cycleLogs = [...(logs || [])]
+    .filter((log) => log.cycle === cycle && log.week < 5)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  for (const log of cycleLogs) {
+    for (const entry of log.entries || []) {
+      if (!entry.variantKey || entry.targetWeight == null) continue;
+      restored[entry.variantKey] = roundTo(entry.targetWeight, entry.loadStep || 2.5);
+    }
+  }
+  return restored;
+}
+
 function completeSession() {
   const day = currentDay();
   const entries = day.exercises.map(calcExerciseEntry);
@@ -773,10 +791,12 @@ function completeSession() {
   const nextPending = { ...state.pendingIncrements };
   const applied = [];
 
-  for (const entry of entries) {
-    const exercise = getExercise(entry.exerciseId);
-    const variantKey = exercise?.variantKey || getSelectedExerciseVariant(entry.exerciseId);
-    nextVariantWeights[variantKey] = roundTo(entry.targetWeight, exercise?.loadStep || 2.5);
+  if (shouldPersistBaseLoad(state.week)) {
+    for (const entry of entries) {
+      const exercise = getExercise(entry.exerciseId);
+      const variantKey = exercise?.variantKey || getSelectedExerciseVariant(entry.exerciseId);
+      nextVariantWeights[variantKey] = roundTo(entry.targetWeight, exercise?.loadStep || 2.5);
+    }
   }
 
   for (const entry of entries) {
@@ -823,7 +843,7 @@ function completeSession() {
     state.cycle,
     nextWeights,
     nextPending,
-    nextVariantWeights
+    state.week === 5 ? getPreDeloadVariantWeights(nextVariantWeights, state.cycle) : nextVariantWeights
   );
 
   state = {
@@ -1623,12 +1643,8 @@ function writeDraftValue(key, value) {
   const draft = getDraft(exercise);
   if (type === "weight") {
     const weight = roundTo(value, exercise.loadStep);
-    state = {
+    const nextState = {
       ...state,
-      exerciseVariantWeights: {
-        ...state.exerciseVariantWeights,
-        [exercise.variantKey || getSelectedExerciseVariant(exerciseId)]: weight
-      },
       draft: {
         ...state.draft,
         [exerciseId]: {
@@ -1636,6 +1652,15 @@ function writeDraftValue(key, value) {
           weight
         }
       }
+    };
+    if (shouldPersistBaseLoad(state.week)) {
+      nextState.exerciseVariantWeights = {
+        ...state.exerciseVariantWeights,
+        [exercise.variantKey || getSelectedExerciseVariant(exerciseId)]: weight
+      };
+    }
+    state = {
+      ...nextState
     };
     saveState();
     render();
@@ -1667,10 +1692,12 @@ export {
   epleyOneRm,
   getPhase,
   getExerciseTrainingClass,
+  getPreDeloadVariantWeights,
   getTargetSets,
   getTargetRpe,
   getVariantKey,
   isOverloadStackWeek,
+  shouldPersistBaseLoad,
   targetWeightFromOneRm,
   advanceAfterSession
 };
