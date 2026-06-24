@@ -1,0 +1,19 @@
+{
+  "name": "RPE Bulk Planner",
+  "short_name": "RPE Bulk",
+  "description": "RPE, 1RM, 점진적 과부하, 5주 주기화 기반 벌크업 PWA",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#05070b",
+  "theme_color": "#05070b",
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
