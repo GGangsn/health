@@ -16,6 +16,39 @@ const BARBELL_EXERCISE_IDS = new Set([
   "front-squat"
 ]);
 
+const EXERCISE_TRAINING_CLASS = {
+  "bench-press": "main",
+  "barbell-row": "main",
+  "back-squat": "main",
+  "romanian-deadlift": "main",
+  "overhead-press": "main",
+  "pull-up": "main",
+  "deadlift": "main",
+  "front-squat": "main",
+  "incline-db-press": "accessory",
+  "lat-pulldown": "accessory",
+  "cable-fly": "accessory",
+  "leg-press": "accessory",
+  "dumbbell-bench": "accessory",
+  "seated-row": "accessory",
+  "dip": "accessory",
+  "leg-curl": "accessory",
+  "machine-shoulder": "accessory",
+  "face-pull": "isolation",
+  "lateral-raise": "isolation",
+  "standing-calf": "isolation",
+  "rear-delt-fly": "isolation",
+  "ez-curl": "isolation",
+  "cable-lateral": "isolation",
+  "triceps-pushdown": "isolation"
+};
+
+const TRAINING_CLASS_LABEL = {
+  main: "메인",
+  accessory: "보조",
+  isolation: "소근육"
+};
+
 const EXERCISE_GROUP_KEY = {
   "bench-press": "horizontal_chest_push",
   "dumbbell-bench": "horizontal_chest_push",
@@ -305,6 +338,7 @@ const ROUTINE = [
     minReps,
     maxReps,
     baseWeight,
+    trainingClass: EXERCISE_TRAINING_CLASS[id] || "accessory",
     loadStep: BARBELL_EXERCISE_IDS.has(id) ? 5 : 2.5
   }))
 }));
@@ -494,8 +528,25 @@ function getPhase(week = state.week) {
   };
 }
 
-function getTargetSets(week = state.week) {
-  return getPhase(week).setTarget;
+function getExerciseTrainingClass(exercise = null) {
+  if (!exercise) return "main";
+  return exercise.trainingClass || EXERCISE_TRAINING_CLASS[exercise.id] || "accessory";
+}
+
+function getTrainingClassLabel(exercise = null) {
+  return TRAINING_CLASS_LABEL[getExerciseTrainingClass(exercise)] || TRAINING_CLASS_LABEL.accessory;
+}
+
+function getTargetSets(week = state.week, exercise = null) {
+  const trainingClass = getExerciseTrainingClass(exercise);
+  if (week <= 2) return trainingClass === "isolation" ? 4 : 3;
+  if (week <= 4) return trainingClass === "isolation" ? 5 : 4;
+  if (trainingClass === "main") return 1;
+  return trainingClass === "isolation" ? 2 : 2;
+}
+
+function isOverloadStackWeek(week = state.week) {
+  return week === 3 || week === 4;
 }
 
 function getTargetRpe(week = state.week) {
@@ -620,7 +671,7 @@ function getRoutine() {
 
 function getDraft(exercise) {
   const phase = getPhase();
-  const targetSets = getTargetSets();
+  const targetSets = getTargetSets(state.week, exercise);
   const defaultWeight = Number(state.exerciseWeights[exercise.id] ?? exercise.baseWeight) || 0;
   const baseWeight = getVariantWeight(exercise.id, exercise.variantKey || getSelectedExerciseVariant(exercise.id), defaultWeight);
   const targetWeight = roundTo(baseWeight * phase.loadScale, exercise.loadStep);
@@ -653,7 +704,8 @@ function calcExerciseEntry(exercise) {
   const avgReps = reps.reduce((sum, rep) => sum + rep, 0) / reps.length;
   const midpoint = (exercise.minReps + exercise.maxReps) / 2;
   const targetReps = exercise.maxReps;
-  const targetMet = reps.length === getTargetSets() && reps.every((rep) => rep >= targetReps);
+  const targetSets = getTargetSets(state.week, exercise);
+  const targetMet = reps.length === targetSets && reps.every((rep) => rep >= targetReps);
   const bestReps = Math.max(...reps);
   const oneRm = exercise.loadMode === "assistance" ? 0 : epleyOneRm(draft.weight, bestReps);
   const recommendedNext =
@@ -666,6 +718,8 @@ function calcExerciseEntry(exercise) {
     muscle: exercise.muscle,
     targetRange: [exercise.minReps, exercise.maxReps],
     targetReps,
+    targetSets,
+    trainingClass: getExerciseTrainingClass(exercise),
     targetWeight: Number(draft.weight) || 0,
     rpeTarget: getTargetRpe(),
     reps,
@@ -697,6 +751,10 @@ function completeSession() {
   }
 
   for (const entry of entries) {
+    if (!isOverloadStackWeek(state.week)) {
+      nextStreaks[entry.exerciseId] = 0;
+      continue;
+    }
     const previous = Number(nextStreaks[entry.exerciseId] || 0);
     const streak = entry.targetMet ? previous + 1 : previous;
     if (streak >= 2) {
@@ -1148,9 +1206,10 @@ function workoutView() {
 function exerciseCard(exercise) {
   const draft = getDraft(exercise);
   const entry = calcExerciseEntry(exercise);
-  const streak = Number(state.streaks[exercise.id] || 0);
+  const stackEligible = isOverloadStackWeek();
+  const streak = stackEligible ? Number(state.streaks[exercise.id] || 0) : 0;
   const pending = getPendingIncrement(exercise);
-  const targetSets = getTargetSets();
+  const targetSets = getTargetSets(state.week, exercise);
   const weightLabel = exercise.loadMode === "assistance" ? "보조 중량 kg" : "중량 kg";
   const firstMetricLabel = exercise.loadMode === "assistance" ? "현재 보조" : "Epley 1RM";
   const firstMetricValue = exercise.loadMode === "assistance" ? formatLoad(draft.weight, exercise) : kg(entry.estimatedOneRm);
@@ -1160,7 +1219,7 @@ function exerciseCard(exercise) {
       <div class="exercise-head">
         <div>
           <button class="exercise-name" data-open-variant="${exercise.id}">${exercise.name}</button>
-          <div class="subtitle">${exercise.muscle} · ${exercise.minReps}-${exercise.maxReps}회 · ${targetSets}세트 · ${exercise.loadStep}kg 단위${exercise.loadMode === "assistance" ? " · 보조 중량 입력" : ""}</div>
+          <div class="subtitle">${getTrainingClassLabel(exercise)} · ${exercise.muscle} · ${exercise.minReps}-${exercise.maxReps}회 · ${targetSets}세트 · ${exercise.loadStep}kg 단위${exercise.loadMode === "assistance" ? " · 보조 중량 입력" : ""}</div>
         </div>
         <span class="tag">${pending !== 0 ? `${formatDelta(pending, exercise)} 대기` : `${streak}/2`}</span>
       </div>
@@ -1176,7 +1235,7 @@ function exerciseCard(exercise) {
         <div class="metric"><span>${firstMetricLabel}</span><strong>${firstMetricValue}</strong></div>
         <div class="metric"><span>${secondMetricLabel}</span><strong>${formatLoad(entry.recommendedNext, exercise)}</strong></div>
       </div>
-      <p class="note">목표 ${targetSets}세트 × ${exercise.maxReps}회 · ${entry.targetMet ? "과부하 달성 카운트 누적" : "미달성: 기존 카운트 유지"}${pending !== 0 ? ` · 다음 사이클 ${formatDelta(pending, exercise)} 반영` : ""}</p>
+      <p class="note">목표 ${targetSets}세트 × ${exercise.maxReps}회 · ${stackEligible ? (entry.targetMet ? "3-4주차 과부하 스택 누적" : "미달성: 기존 카운트 유지") : "스택 미적용 주차"}${pending !== 0 ? ` · 다음 사이클 ${formatDelta(pending, exercise)} 반영` : ""}</p>
     </article>
   `;
 }
@@ -1569,9 +1628,11 @@ export {
   calcNutrition,
   epleyOneRm,
   getPhase,
+  getExerciseTrainingClass,
   getTargetSets,
   getTargetRpe,
   getVariantKey,
+  isOverloadStackWeek,
   targetWeightFromOneRm,
   advanceAfterSession
 };
