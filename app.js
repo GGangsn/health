@@ -456,7 +456,9 @@ function formatLoad(value, exercise = null) {
 function formatDelta(value, exercise = null) {
   const number = Number(value) || 0;
   if (exercise?.loadMode === "assistance") {
-    return number < 0 ? `보조 ${kg(Math.abs(number))} 감소` : `보조 ${kg(number)} 증가`;
+    return number < 0
+      ? `난이도 +${kg(Math.abs(number))} (보조 ${kg(Math.abs(number))} 감소)`
+      : `난이도 -${kg(number)} (보조 ${kg(number)} 증가)`;
   }
   return number >= 0 ? `+${kg(number)}` : `-${kg(Math.abs(number))}`;
 }
@@ -1152,7 +1154,7 @@ function exerciseCard(exercise) {
   const weightLabel = exercise.loadMode === "assistance" ? "보조 중량 kg" : "중량 kg";
   const firstMetricLabel = exercise.loadMode === "assistance" ? "현재 보조" : "Epley 1RM";
   const firstMetricValue = exercise.loadMode === "assistance" ? formatLoad(draft.weight, exercise) : kg(entry.estimatedOneRm);
-  const secondMetricLabel = exercise.loadMode === "assistance" ? "보조 가이드" : "RPE 가이드 중량";
+  const secondMetricLabel = exercise.loadMode === "assistance" ? "다음 보조 목표" : "RPE 가이드 중량";
   return h`
     <article class="exercise">
       <div class="exercise-head">
@@ -1234,7 +1236,12 @@ function plannerView() {
             <h3>${day.label} · ${day.focus}</h3>
             <p>${day.exercises.map((exercise) => {
               const pending = getPendingIncrement(exercise);
-              return `${exercise.name} ${formatLoad(state.exerciseWeights[exercise.id], exercise)}${pending !== 0 ? ` (${formatDelta(pending, exercise)} 대기)` : ""}`;
+              const currentLoad = getVariantWeight(
+                exercise.id,
+                exercise.variantKey || getSelectedExerciseVariant(exercise.id),
+                state.exerciseWeights[exercise.id] ?? exercise.baseWeight
+              );
+              return `${exercise.name} ${formatLoad(currentLoad, exercise)}${pending !== 0 ? ` (${formatDelta(pending, exercise)} 대기)` : ""}`;
             }).join(" / ")}</p>
           </article>
         `
@@ -1438,13 +1445,15 @@ function historyItem(log) {
     hour: "2-digit",
     minute: "2-digit"
   });
-  const overloads = log.entries.filter((entry) => entry.overloadApplied).map((entry) => entry.name);
+  const overloads = log.entries
+    .filter((entry) => entry.overloadApplied)
+    .map((entry) => `${entry.name} ${entry.loadMode === "assistance" ? "난이도 상승 대기" : "증량 대기"}`);
   const top = log.entries.reduce((best, entry) => (entry.estimatedOneRm > best.estimatedOneRm ? entry : best), log.entries[0]);
   return h`
     <article class="history-item">
       <h3>${date} · C${log.cycle} W${log.week} · ${log.dayLabel}</h3>
       <p>최고 추정 1RM: ${top ? `${top.name} ${kg(top.estimatedOneRm)}` : "-"}</p>
-      <p>과부하 달성: ${overloads.length ? `${overloads.join(", ")} · 다음 사이클 증량 대기` : "없음"}</p>
+      <p>과부하 달성: ${overloads.length ? `${overloads.join(", ")} · 다음 사이클 반영` : "없음"}</p>
     </article>
   `;
 }
