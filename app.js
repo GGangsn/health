@@ -533,7 +533,7 @@ function getPhase(week = state.week) {
       detail: "RPE 8",
       rpe: 8,
       volumeScale: 1,
-      loadScale: 1,
+      loadScale: 0.8,
       setTarget: 3
     };
   }
@@ -543,7 +543,7 @@ function getPhase(week = state.week) {
       detail: "RPE 9",
       rpe: 9,
       volumeScale: 1,
-      loadScale: 1,
+      loadScale: 0.85,
       setTarget: 4
     };
   }
@@ -578,8 +578,8 @@ function isOverloadStackWeek(week = state.week) {
   return week === 3 || week === 4;
 }
 
-function shouldPersistBaseLoad(week = state.week) {
-  return week < 5;
+function shouldPersistBaseLoad() {
+  return false;
 }
 
 function getTargetRpe(week = state.week) {
@@ -993,15 +993,12 @@ function toggleExercisePicker(exerciseId) {
 function selectExerciseVariant(exerciseId, variantKey) {
   const currentExercise = getExercise(exerciseId);
   const currentVariantKey = currentExercise?.variantKey || getSelectedExerciseVariant(exerciseId);
-  const currentDraft = currentExercise ? getDraft(currentExercise) : null;
   const variants = getExerciseVariants(exerciseId);
   const selected = variants.find((variant) => variant.variantKey === variantKey);
   if (!selected) return;
   const nextVariantWeights = { ...state.exerciseVariantWeights };
-  if (currentDraft) {
-    nextVariantWeights[currentVariantKey] = roundTo(currentDraft.weight, currentExercise.loadStep);
-  }
   const nextWeight = getVariantWeight(exerciseId, variantKey, selected.baseWeight);
+  const displayWeight = roundTo(nextWeight * getPhase().loadScale, selected.loadStep);
   state = {
     ...state,
     selectedExerciseVariant: {
@@ -1030,7 +1027,7 @@ function selectExerciseVariant(exerciseId, variantKey) {
       ...state.draft,
       [exerciseId]: {
         ...(state.draft[exerciseId] || {}),
-        weight: roundTo(nextWeight, selected.loadStep)
+        weight: displayWeight
       }
     },
     openExercisePicker: ""
